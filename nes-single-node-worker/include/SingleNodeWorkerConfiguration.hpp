@@ -61,7 +61,7 @@ public:
     /// Reconciler poll interval in milliseconds
     ScalarOption<int> etcdPollIntervalMs{
         "etcdPollIntervalMs",
-        "1000",
+        1000,
         "Interval in milliseconds between etcd polls"
     };
 
