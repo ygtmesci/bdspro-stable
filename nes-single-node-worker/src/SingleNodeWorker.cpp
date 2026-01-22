@@ -150,7 +150,7 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& configur
         EtcdReconcilerConfig reconcilerConfig{
             .endpoints = configuration.etcdEndpoints.getValue(),
             .keyPrefix = configuration.etcdKeyPrefix.getValue(),
-            .pollInterval = std::chrono::milliseconds(configuration.etcdPollIntervalMs.getValue())
+            .pollInterval = std::chrono::milliseconds(std::stoi(configuration.etcdPollIntervalMs.getValue()))
         };
 
         auto callback = [this](LocalQueryId queryId, LogicalPlan plan) {
