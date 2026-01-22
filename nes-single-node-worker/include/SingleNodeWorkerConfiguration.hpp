@@ -59,7 +59,7 @@ public:
     };
 
     /// Reconciler poll interval in milliseconds
-    ScalarOption<int> etcdPollIntervalMs{
+    ScalarOption<std::string> etcdPollIntervalMs{
         "etcdPollIntervalMs",
         "1000",
         "Interval in milliseconds between etcd polls"
