@@ -113,7 +113,7 @@ if [[ ! $input =~ ^([yY][eE][sS]|[yY])$ ]]; then
 fi
 
 cd "$(git rev-parse --show-toplevel)"
-HASH=ed937809ee786260c93b0d76039a30900a825162de0bb06973fa915789e4ec74
+HASH=9ef71cea4052aa2d0da3182e7fdb7cc04177a4251f2d82a2955595b33babcd36
 TAG=${HASH}-${STDLIB}-${SANITIZER}
 
 # Docker on macOS appears to always enable the mapping from the container root user to the hosts current
