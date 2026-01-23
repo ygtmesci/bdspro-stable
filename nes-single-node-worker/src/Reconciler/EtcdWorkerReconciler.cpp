@@ -81,6 +81,9 @@ bool EtcdWorkerReconciler::isConnected() const {
 }
 
 void EtcdWorkerReconciler::pollLoop(const std::stop_token& token) {
+    // Initialize thread context for NES
+    NES::Thread::initializeThread(WorkerId("etcd-reconciler"), "etcd-reconciler");
+    
     while (!token.stop_requested()) {
         try {
             reconcile();
