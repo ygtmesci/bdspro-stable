@@ -62,8 +62,8 @@ SingleNodeWorker::~SingleNodeWorker() = default;
 SingleNodeWorker::SingleNodeWorker(SingleNodeWorker&& other) noexcept = default;
 SingleNodeWorker& SingleNodeWorker::operator=(SingleNodeWorker&& other) noexcept = default;
 
-SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& configuration, WorkerId workerId)
-    : listener(std::make_shared<CompositeStatisticListener>()), configuration(configuration)
+SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& config, WorkerId workerId)
+    : listener(std::make_shared<CompositeStatisticListener>()), configuration(config)  // renamed parameter
 {
     if (configuration.enableGoogleEventTrace.getValue())
     {
