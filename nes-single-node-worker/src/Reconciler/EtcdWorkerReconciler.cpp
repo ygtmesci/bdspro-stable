@@ -149,6 +149,8 @@ void EtcdWorkerReconciler::reconcile() {
         }
 
         LogicalPlan plan = QueryPlanSerializationUtil::deserializeQueryPlan(proto);
+        NES_INFO("Deserialized plan: {}", plan);  // or explain(plan, ExplainVerbosity::Debug)
+        NES_INFO("Root operators count: {}", plan.getRootOperators().size());
 
         // Mark as known before callback to prevent duplicate processing
         {

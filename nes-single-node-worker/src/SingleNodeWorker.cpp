@@ -192,6 +192,10 @@ void SingleNodeWorker::onQueryDiscoveredFromEtcd(const std::string& distributedQ
                   distributedQueryId, registerResult.error().what());
         return;
     }
+    if (plan.getRootOperators().empty()) {
+        NES_ERROR("Deserialized plan has no root operators!");
+        return;
+    }
 
     LocalQueryId localQueryId = *registerResult;
     NES_INFO("SingleNodeWorker: registered distributed query '{}' as local query {}", 
