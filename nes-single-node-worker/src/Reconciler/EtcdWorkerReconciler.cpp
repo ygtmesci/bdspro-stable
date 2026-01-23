@@ -19,6 +19,8 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <Util/Logger/impl/NesLogger.hpp>
+#include <Identifiers/Identifiers.hpp>
 
 #include <Serialization/QueryPlanSerializationUtil.hpp>
 #include <SerializableQueryPlan.pb.h>
