@@ -78,8 +78,19 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& config, 
 
     nodeEngine = NodeEngineBuilder(configuration.workerConfiguration, copyPtr(listener)).build(workerId);
 
+    if (!nodeEngine) {
+        throw std::runtime_error("SingleNodeWorker: Failed to build NodeEngine. Check configuration and port availability.");
+    }
+
     optimizer = std::make_unique<QueryOptimizer>(this->configuration.workerConfiguration.defaultQueryExecution);
+    if (!optimizer) {
+        throw std::runtime_error("SingleNodeWorker: Failed to initialize QueryOptimizer.");
+    }
+
     compiler = std::make_unique<QueryCompilation::QueryCompiler>();
+    if (!compiler) {
+        throw std::runtime_error("SingleNodeWorker: Failed to initialize QueryCompiler.");
+    }
 
     // Worker-side query plan store init
     if (!configuration.queryPlanStoreDir.getValue().empty())
@@ -177,13 +188,16 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& config, 
     }
 }
 
+// Change this function:
 void SingleNodeWorker::onQueryDiscoveredFromEtcd(const std::string& distributedQueryId, LogicalPlan plan)
 {
     NES_INFO("SingleNodeWorker: processing distributed query '{}' from etcd", distributedQueryId);
 
-    // The plan from etcd may have an INVALID_LOCAL_QUERY_ID.
-    // registerQuery() will generate a proper UUID-based LocalQueryId.
-    // We do NOT try to use the distributed query ID (horse name) as the local query ID.
+    // FIX: Check for root operators BEFORE moving the plan
+    if (plan.getRootOperators().empty()) {
+        NES_ERROR("Deserialized plan for '{}' has no root operators!", distributedQueryId);
+        return;
+    }
 
     auto registerResult = registerQuery(std::move(plan));
     if (!registerResult)
@@ -192,10 +206,8 @@ void SingleNodeWorker::onQueryDiscoveredFromEtcd(const std::string& distributedQ
                   distributedQueryId, registerResult.error().what());
         return;
     }
-    if (plan.getRootOperators().empty()) {
-        NES_ERROR("Deserialized plan has no root operators!");
-        return;
-    }
+
+    // REMOVED: The check here was causing an early return because 'plan' was empty after std::move
 
     LocalQueryId localQueryId = *registerResult;
     NES_INFO("SingleNodeWorker: registered distributed query '{}' as local query {}", 
