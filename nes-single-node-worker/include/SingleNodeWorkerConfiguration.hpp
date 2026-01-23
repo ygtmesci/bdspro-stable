@@ -10,10 +10,9 @@ namespace NES {
 
 class SingleNodeWorkerConfiguration final : public BaseConfiguration {
 public:
-    /// Connection name ({Hostname}:{PORT})
+    /// Connection name ({Hostname}:{PORT}) - NO DEFAULT VALUE
     ScalarOption<NES::URI> connection{
         "connection",
-        "",
         "Connection name. This is the {Hostname}:{PORT}"
     };
 
@@ -21,14 +20,18 @@ public:
     ScalarOption<NES::URI> grpcAddressUri{
         "grpc",
         "localhost:8080",
-        R"(The address to try to bind to the server in URI form.)"
+        R"(The address to try to bind to the server in URI form. If
+the scheme name is omitted, "dns:///" is assumed. To bind to any address,
+please use IPv6 any, i.e., [::]:<port>, which also accepts IPv4
+connections. Valid values include dns:///localhost:1234,
+192.168.1.1:31416, dns:///[::1]:27182, etc.)"
     };
 
     /// Enable Google Event Trace logging
     BoolOption enableGoogleEventTrace{
         "enable_event_trace",
         "false",
-        "Enable Google Event Trace logging."
+        "Enable Google Event Trace logging that generates Chrome tracing compatible JSON files."
     };
 
     /// Directory for persisting query plans
@@ -75,6 +78,7 @@ protected:
 public:
     SingleNodeWorkerConfiguration() = default;
 
+    /// NodeEngine configuration subtree
     WorkerConfiguration workerConfiguration{
         "worker",
         "NodeEngine Configuration"
