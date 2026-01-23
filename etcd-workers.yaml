@@ -18,6 +18,7 @@ services:
 
   nes:
     image: nebulastream/nes-development:local
+    hostname: sink-node
     container_name: nes
     working_dir: ${PWD}
     volumes:
