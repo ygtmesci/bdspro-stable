@@ -13,6 +13,7 @@ public:
     /// Connection name ({Hostname}:{PORT})
     ScalarOption<NES::URI> connection{
         "connection",
+        "",
         "Connection name. This is the {Hostname}:{PORT}"
     };
 
