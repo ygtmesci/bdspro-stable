@@ -32,7 +32,7 @@ public:
     [[nodiscard]] static PhysicalPlan optimize(const LogicalPlan& plan, const QueryExecutionConfiguration& defaultQueryExecution);
 
 private:
-    QueryExecutionConfiguration defaultQueryExecution;
+    const QueryExecutionConfiguration& defaultQueryExecution;  // reference, not value
 };
 
 }
