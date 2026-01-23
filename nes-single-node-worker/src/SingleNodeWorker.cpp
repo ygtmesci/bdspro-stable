@@ -180,7 +180,8 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& configur
         NES_INFO("SingleNodeWorker: etcd reconciler started");
     }
 
-    if (!configuration.connection.getValue().empty())
+    if (!configuration.connection.getValue().empty() && 
+    configuration.connection.getValue().toString() != "localhost:0")
     {
         initReceiverService(configuration.connection.getValue().toString(), workerId);
         initSenderService(configuration.connection.getValue().toString(), workerId);
