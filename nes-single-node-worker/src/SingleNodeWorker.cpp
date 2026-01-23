@@ -154,8 +154,8 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& configur
             .pollInterval = std::chrono::milliseconds(pollMs)
         };
 
-        auto callback = [this](LocalQueryId queryId, LogicalPlan plan) {
-            onQueryDiscoveredFromEtcd(queryId, std::move(plan));
+        auto callback = [this](const std::string& distributedQueryId, LogicalPlan plan) {
+            onQueryDiscoveredFromEtcd(distributedQueryId, std::move(plan));
         };
 
         reconciler = std::make_unique<EtcdWorkerReconciler>(
@@ -163,18 +163,8 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& configur
             configuration.grpcAddressUri.getValue().toString(),
             callback);
 
-        // Mark queries from local recovery as known
-        if (planStore)
-        {
-            auto restored = planStore->loadAll();
-            if (restored)
-            {
-                for (const auto& [id, _] : *restored)
-                {
-                    reconciler->markQueryAsKnown(id);
-                }
-            }
-        }
+        // Note: For local recovery with etcd, we'd need to track distributed query IDs
+        // separately. For now, just start the reconciler.
 
         reconciler->start();
         NES_INFO("SingleNodeWorker: etcd reconciler started");
@@ -187,32 +177,36 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& configur
     }
 }
 
-void SingleNodeWorker::onQueryDiscoveredFromEtcd(LocalQueryId queryId, LogicalPlan plan)
+void SingleNodeWorker::onQueryDiscoveredFromEtcd(const std::string& distributedQueryId, LogicalPlan plan)
 {
-    NES_INFO("SingleNodeWorker: processing query {} from etcd", queryId);
+    NES_INFO("SingleNodeWorker: processing distributed query '{}' from etcd", distributedQueryId);
 
-    if (plan.getQueryId() == INVALID_LOCAL_QUERY_ID)
-    {
-        plan.setQueryId(queryId);
-    }
+    // The plan from etcd may have an INVALID_LOCAL_QUERY_ID.
+    // registerQuery() will generate a proper UUID-based LocalQueryId.
+    // We do NOT try to use the distributed query ID (horse name) as the local query ID.
 
     auto registerResult = registerQuery(std::move(plan));
     if (!registerResult)
     {
-        NES_ERROR("SingleNodeWorker: failed to register query {} from etcd: {}",
-                  queryId, registerResult.error().what());
+        NES_ERROR("SingleNodeWorker: failed to register distributed query '{}' from etcd: {}",
+                  distributedQueryId, registerResult.error().what());
         return;
     }
 
-    auto startResult = startQuery(*registerResult);
+    LocalQueryId localQueryId = *registerResult;
+    NES_INFO("SingleNodeWorker: registered distributed query '{}' as local query {}", 
+             distributedQueryId, localQueryId);
+
+    auto startResult = startQuery(localQueryId);
     if (!startResult)
     {
-        NES_ERROR("SingleNodeWorker: failed to start query {} from etcd: {}",
-                  queryId, startResult.error().what());
+        NES_ERROR("SingleNodeWorker: failed to start local query {} (distributed: '{}'): {}",
+                  localQueryId, distributedQueryId, startResult.error().what());
     }
     else
     {
-        NES_INFO("SingleNodeWorker: started query {} from etcd", queryId);
+        NES_INFO("SingleNodeWorker: started local query {} (distributed: '{}')", 
+                 localQueryId, distributedQueryId);
     }
 }
 

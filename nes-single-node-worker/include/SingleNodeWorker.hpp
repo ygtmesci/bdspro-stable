@@ -4,6 +4,7 @@
 #include <expected>
 #include <memory>
 #include <optional>
+#include <string>
 #include <Identifiers/Identifiers.hpp>
 #include <Listeners/QueryLog.hpp>
 #include <Plans/LogicalPlan.hpp>
@@ -55,6 +56,8 @@ public:
 
 private:
     /// Called by reconciler when new query discovered in etcd
-    void onQueryDiscoveredFromEtcd(LocalQueryId queryId, LogicalPlan plan);
+    /// @param distributedQueryId The distributed query ID (horse name like "bold_appaloosa")
+    /// @param plan The logical plan to execute
+    void onQueryDiscoveredFromEtcd(const std::string& distributedQueryId, LogicalPlan plan);
 };
 }

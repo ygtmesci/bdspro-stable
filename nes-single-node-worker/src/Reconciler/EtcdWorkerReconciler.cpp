@@ -48,8 +48,8 @@ EtcdWorkerReconciler::EtcdWorkerReconciler(
     , onQueryDiscovered(std::move(onQueryDiscovered))
     , client(std::make_unique<etcd::SyncClient>(this->config.endpoints))
 {
-    NES_INFO("EtcdWorkerReconciler: connecting to {} for worker {}",
-             this->config.endpoints, this->workerGrpcAddr);
+    NES_INFO("EtcdWorkerReconciler: connecting to {} for worker {} (encoded: {})",
+             this->config.endpoints, this->workerGrpcAddr, encodedWorkerAddr);
 }
 
 EtcdWorkerReconciler::~EtcdWorkerReconciler() {
@@ -69,10 +69,10 @@ void EtcdWorkerReconciler::stop() {
     // Thread destructor handles stop request and join
 }
 
-void EtcdWorkerReconciler::markQueryAsKnown(const LocalQueryId& queryId) {
+void EtcdWorkerReconciler::markQueryAsKnown(const std::string& distributedQueryId) {
     std::lock_guard lock(knownQueriesMutex);
-    knownQueries.insert(queryId);
-    NES_DEBUG("EtcdWorkerReconciler: marked query {} as known", queryId);
+    knownDistributedQueries.insert(distributedQueryId);
+    NES_DEBUG("EtcdWorkerReconciler: marked distributed query {} as known", distributedQueryId);
 }
 
 bool EtcdWorkerReconciler::isConnected() const {
@@ -114,24 +114,25 @@ void EtcdWorkerReconciler::reconcile() {
             continue;
         }
 
-        // Extract query ID from key: {prefix}{queryId}/assignments/{worker}
+        // Extract distributed query ID from key: {prefix}{distributedQueryId}/assignments/{worker}
         std::string remainder = key.substr(config.keyPrefix.size());
         auto slashPos = remainder.find('/');
         if (slashPos == std::string::npos) {
             continue;
         }
         
-        LocalQueryId queryId(remainder.substr(0, slashPos));
+        // This is the horse name like "bold_appaloosa", NOT a UUID
+        std::string distributedQueryId = remainder.substr(0, slashPos);
 
-        // Check if we already know this query
+        // Check if we already know this distributed query
         {
             std::lock_guard lock(knownQueriesMutex);
-            if (knownQueries.contains(queryId)) {
+            if (knownDistributedQueries.contains(distributedQueryId)) {
                 continue;
             }
         }
 
-        NES_INFO("EtcdWorkerReconciler: discovered new query assignment: {}", queryId);
+        NES_INFO("EtcdWorkerReconciler: discovered new query assignment: {}", distributedQueryId);
 
         // Fetch the plan
         etcd::Response getResponse = client->get(key);
@@ -152,14 +153,14 @@ void EtcdWorkerReconciler::reconcile() {
         // Mark as known before callback to prevent duplicate processing
         {
             std::lock_guard lock(knownQueriesMutex);
-            knownQueries.insert(queryId);
+            knownDistributedQueries.insert(distributedQueryId);
         }
 
-        // Invoke callback
+        // Invoke callback with the distributed query ID (horse name)
         try {
-            onQueryDiscovered(queryId, std::move(plan));
+            onQueryDiscovered(distributedQueryId, std::move(plan));
         } catch (const std::exception& e) {
-            NES_ERROR("EtcdWorkerReconciler: callback failed for {}: {}", queryId, e.what());
+            NES_ERROR("EtcdWorkerReconciler: callback failed for {}: {}", distributedQueryId, e.what());
         }
     }
 }

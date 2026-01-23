@@ -18,6 +18,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_set>
 
@@ -37,8 +38,9 @@ struct EtcdReconcilerConfig {
     std::chrono::milliseconds pollInterval{1000};
 };
 
-/// Callback type for when a new query assignment is discovered
-using QueryDiscoveredCallback = std::function<void(LocalQueryId, LogicalPlan)>;
+/// Callback type for when a new query assignment is discovered.
+/// Takes the distributed query ID (horse name) and the logical plan.
+using QueryDiscoveredCallback = std::function<void(const std::string& distributedQueryId, LogicalPlan)>;
 
 /// Polls etcd for query assignments and invokes callback for new queries.
 /// Tracks already-processed queries to avoid duplicate execution.
@@ -57,8 +59,8 @@ public:
     /// Stop polling (called automatically on destruction)
     void stop();
 
-    /// Mark a query as known (e.g., from local recovery)
-    void markQueryAsKnown(const LocalQueryId& queryId);
+    /// Mark a distributed query as known (e.g., from local recovery)
+    void markQueryAsKnown(const std::string& distributedQueryId);
 
     /// Check if connected to etcd
     [[nodiscard]] bool isConnected() const;
@@ -78,8 +80,8 @@ private:
     std::unique_ptr<etcd::SyncClient> client;
     Thread pollThread;
 
-    /// Track queries we've already seen/processed
-    std::unordered_set<LocalQueryId> knownQueries;
+    /// Track distributed query IDs we've already seen/processed (horse names like "bold_appaloosa")
+    std::unordered_set<std::string> knownDistributedQueries;
     std::mutex knownQueriesMutex;
 };
 
