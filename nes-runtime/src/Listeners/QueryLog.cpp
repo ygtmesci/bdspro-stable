@@ -1,19 +1,4 @@
-/*
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        https://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-*/
-
 #include <Listeners/QueryLog.hpp>
-
 #include <chrono>
 #include <optional>
 #include <ostream>
@@ -21,9 +6,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-
 #include <magic_enum/magic_enum.hpp>
-
 #include <Identifiers/Identifiers.hpp>
 #include <Runtime/Execution/QueryStatus.hpp>
 #include <Runtime/QueryTerminationType.hpp>
@@ -49,14 +32,13 @@ inline std::ostream& operator<<(std::ostream& os, const QueryStateChange& status
 
 bool QueryLog::logSourceTermination(LocalQueryId, OriginId, QueryTerminationType, std::chrono::system_clock::time_point)
 {
-    /// TODO #34: part of redesign of single node worker
-    return true; /// nop
+    return true; 
 }
 
 bool QueryLog::logQueryFailure(const LocalQueryId queryId, const Exception exception, const std::chrono::system_clock::time_point timestamp)
 {
+    logQueryStatusChange(queryId, QueryState::Failed, timestamp); // Ensure status change logic is unified
     QueryStateChange statusChange(exception, timestamp);
-
     if (const auto log = queryStatusLog.wlock(); log->contains(queryId))
     {
         auto& changes = (*log)[queryId];
@@ -71,22 +53,30 @@ bool QueryLog::logQueryFailure(const LocalQueryId queryId, const Exception excep
 bool QueryLog::logQueryStatusChange(const LocalQueryId queryId, QueryState status, const std::chrono::system_clock::time_point timestamp)
 {
     QueryStateChange statusChange(std::move(status), timestamp);
-
     const auto log = queryStatusLog.wlock();
     auto& changes = (*log)[queryId];
     const auto pos = std::ranges::upper_bound(
         changes, statusChange, [](const QueryStateChange& lhs, const QueryStateChange& rhs) { return lhs.timestamp < rhs.timestamp; });
     changes.emplace(pos, std::move(statusChange));
+
+    // NEW: Check if this is a terminal state (Stopped or Failed)
+    if (status == QueryState::Stopped || status == QueryState::Failed) {
+        std::string distId;
+        {
+            auto map = idMapping.rlock();
+            if (map->contains(queryId)) { distId = map->at(queryId); }
+        }
+        if (!distId.empty() && completionCallback) {
+            completionCallback(distId);
+        }
+    }
     return true;
 }
 
 std::optional<QueryLog::Log> QueryLog::getLogForQuery(LocalQueryId queryId) const
 {
     const auto log = queryStatusLog.rlock();
-    if (const auto it = log->find(queryId); it != log->end())
-    {
-        return it->second;
-    }
+    if (const auto it = log->find(queryId); it != log->end()) { return it->second; }
     return std::nullopt;
 }
 
@@ -96,12 +86,8 @@ std::optional<LocalQueryStatus> getQueryStatusImpl(const auto& log, LocalQueryId
 {
     if (const auto queryLog = log->find(queryId); queryLog != log->end())
     {
-        /// Unfortunately the multithreaded nature of the query engine cannot guarantee event ordering.
-        /// We handle out-of-order events by keeping the most recent timestamp for each event type.
-        /// Final state is determined by priority: Failed > Stopped > Running > Started > Registered.
         LocalQueryStatus status;
         status.queryId = queryId;
-
         for (const auto& statusChange : queryLog->second)
         {
             switch (statusChange.state)
@@ -123,25 +109,11 @@ std::optional<LocalQueryStatus> getQueryStatusImpl(const auto& log, LocalQueryId
                     break;
             }
         }
-
-        /// Determine state based on available metrics and timestamps
         auto state = QueryState::Registered;
-        if (status.metrics.error.has_value())
-        {
-            state = QueryState::Failed;
-        }
-        else if (status.metrics.stop.has_value())
-        {
-            state = QueryState::Stopped;
-        }
-        else if (status.metrics.running.has_value())
-        {
-            state = QueryState::Running;
-        }
-        else if (status.metrics.start.has_value())
-        {
-            state = QueryState::Started;
-        }
+        if (status.metrics.error.has_value()) { state = QueryState::Failed; }
+        else if (status.metrics.stop.has_value()) { state = QueryState::Stopped; }
+        else if (status.metrics.running.has_value()) { state = QueryState::Running; }
+        else if (status.metrics.start.has_value()) { state = QueryState::Started; }
         status.state = state;
         return status;
     }

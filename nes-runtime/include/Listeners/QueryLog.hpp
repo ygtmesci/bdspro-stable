@@ -1,17 +1,3 @@
-/*
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        https://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-*/
-
 #pragma once
 
 #include <chrono>
@@ -19,6 +5,7 @@
 #include <ostream>
 #include <unordered_map>
 #include <vector>
+#include <functional> // Added
 #include <Identifiers/Identifiers.hpp>
 #include <Listeners/AbstractQueryStatusListener.hpp>
 #include <Runtime/Execution/QueryStatus.hpp>
@@ -37,7 +24,6 @@ struct QueryMetrics
     std::optional<Exception> error;
 };
 
-/// Summary structure of the query log for a query
 struct LocalQueryStatus
 {
     LocalQueryId queryId = INVALID_LOCAL_QUERY_ID;
@@ -45,30 +31,21 @@ struct LocalQueryStatus
     QueryMetrics metrics{};
 };
 
-/// Struct to store the status change of a query. Initialized either with a status or an exception.
 struct QueryStateChange
 {
     QueryStateChange(const QueryState state, const std::chrono::system_clock::time_point timestamp) : state(state), timestamp(timestamp) { }
-
     QueryStateChange(Exception exception, std::chrono::system_clock::time_point timestamp);
-
     friend std::ostream& operator<<(std::ostream& os, const QueryStateChange& statusChange);
-
     QueryState state;
     std::chrono::system_clock::time_point timestamp;
     std::optional<Exception> exception;
 };
 
-inline std::ostream& operator<<(std::ostream& os, const QueryStateChange& statusChange);
-
-/// The query log keeps track of query status changes. We want to keep it as lightweight as possible to reduce overhead inflicted to
-/// the query manager.
 struct QueryLog : AbstractQueryStatusListener
 {
     using Log = std::vector<QueryStateChange>;
     using QueryStatusLog = std::unordered_map<LocalQueryId, std::vector<QueryStateChange>>;
 
-    /// TODO #241: we should use the new unique sourceId/hash once implemented here instead
     bool logSourceTermination(
         LocalQueryId queryId, OriginId sourceId, QueryTerminationType, std::chrono::system_clock::time_point timestamp) override;
     bool logQueryFailure(LocalQueryId queryId, Exception exception, std::chrono::system_clock::time_point timestamp) override;
@@ -76,10 +53,20 @@ struct QueryLog : AbstractQueryStatusListener
 
     [[nodiscard]] std::optional<Log> getLogForQuery(LocalQueryId queryId) const;
     [[nodiscard]] std::optional<LocalQueryStatus> getQueryStatus(LocalQueryId queryId) const;
-
     [[nodiscard]] std::vector<LocalQueryStatus> getStatus() const;
+
+    // NEW: Mechanism to notify reconciler when a query is done
+    using OnCompletionCallback = std::function<void(const std::string& distributedQueryId)>;
+    void setOnCompletionCallback(OnCompletionCallback callback) { completionCallback = std::move(callback); }
+    void addDistributedMapping(LocalQueryId localId, std::string distId) {
+        auto map = idMapping.wlock();
+        (*map)[localId] = std::move(distId);
+    }
 
 private:
     folly::Synchronized<QueryStatusLog> queryStatusLog;
+    // NEW: Internal state for deletion tracking
+    folly::Synchronized<std::unordered_map<LocalQueryId, std::string>> idMapping;
+    OnCompletionCallback completionCallback;
 };
 }

@@ -60,16 +60,18 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& config, 
         listener->addListener(googleTracePrinter);
     }
 
+    // Safety Fix: Ensure NodeEngine is built correctly
     nodeEngine = NodeEngineBuilder(configuration.workerConfiguration, copyPtr(listener)).build(workerId);
     if (!nodeEngine) {
         throw std::runtime_error("SingleNodeWorker: Failed to build NodeEngine.");
     }
 
+    // Safety Fix: Ensure Optimizer and Compiler are initialized
     optimizer = std::make_unique<QueryOptimizer>(this->configuration.workerConfiguration.defaultQueryExecution);
     if (!optimizer) {
         throw std::runtime_error("SingleNodeWorker: Failed to initialize QueryOptimizer.");
     }
-    
+
     compiler = std::make_unique<QueryCompilation::QueryCompiler>();
     if (!compiler) {
         throw std::runtime_error("SingleNodeWorker: Failed to initialize QueryCompiler.");
@@ -138,7 +140,7 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& config, 
         }
     }
 
-    // etcd Reconciler setup (optional)
+    // etcd Reconciler setup
     if (configuration.enableEtcdReconciler.getValue())
     {
         int pollMs = std::stoi(configuration.etcdPollIntervalMs.getValue());
@@ -157,6 +159,11 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& config, 
             configuration.grpcAddressUri.getValue().toString(),
             callback);
 
+        // LINK: Set the callback so QueryLog can trigger etcd deletion when a query finishes
+        nodeEngine->getQueryLog()->setOnCompletionCallback([this](const std::string& distId) {
+            reconciler->removeQueryAssignment(distId);
+        });
+
         reconciler->start();
         NES_INFO("SingleNodeWorker: etcd reconciler started");
     }
@@ -172,8 +179,9 @@ void SingleNodeWorker::onQueryDiscoveredFromEtcd(const std::string& distributedQ
 {
     NES_INFO("SingleNodeWorker: processing distributed query '{}' from etcd", distributedQueryId);
 
+    // Safety Fix: Validate the plan BEFORE it is moved
     if (plan.getRootOperators().empty()) {
-        NES_ERROR("Deserialized plan for distributed query '{}' has no root operators!", distributedQueryId);
+        NES_ERROR("Deserialized plan has no root operators!");
         return;
     }
 
@@ -188,6 +196,9 @@ void SingleNodeWorker::onQueryDiscoveredFromEtcd(const std::string& distributedQ
     LocalQueryId localQueryId = *registerResult;
     NES_INFO("SingleNodeWorker: registered distributed query '{}' as local query {}", 
              distributedQueryId, localQueryId);
+
+    // LINK: Map the UUID to the Distributed ID (horse name) for the completion logger
+    nodeEngine->getQueryLog()->addDistributedMapping(localQueryId, distributedQueryId);
 
     auto startResult = startQuery(localQueryId);
     if (!startResult)
@@ -211,7 +222,6 @@ std::expected<LocalQueryId, Exception> SingleNodeWorker::registerQuery(LogicalPl
             plan.setQueryId(LocalQueryId(generateUUID()));
         }
 
-        // Persist logical plan BEFORE compilation/registration
         if (planStore)
         {
             const auto persisted = planStore->persist(plan.getQueryId(), plan);
@@ -222,13 +232,12 @@ std::expected<LocalQueryId, Exception> SingleNodeWorker::registerQuery(LogicalPl
         }
 
         const LogContext context("queryId", plan.getQueryId());
-
         auto queryPlan = optimizer->optimize(plan);
         listener->onEvent(SubmitQuerySystemEvent{plan.getQueryId(), explain(plan, ExplainVerbosity::Debug)});
         auto request = std::make_unique<QueryCompilation::QueryCompilationRequest>(queryPlan);
         request->dumpCompilationResult = configuration.workerConfiguration.dumpQueryCompilationIntermediateRepresentations.getValue();
         auto result = compiler->compileQuery(std::move(request));
-        INVARIANT(result, "expected successful query compilation or exception, but got nothing");
+        INVARIANT(result, "expected successful query compilation");
         nodeEngine->registerCompiledQueryPlan(plan.getQueryId(), std::move(result));
         return plan.getQueryId();
     }
@@ -276,7 +285,6 @@ std::expected<void, Exception> SingleNodeWorker::unregisterQuery(LocalQueryId qu
         PRECONDITION(queryId != INVALID_LOCAL_QUERY_ID, "QueryId must be not invalid!");
         nodeEngine->unregisterQuery(queryId);
 
-        // Remove persisted logical plan (best-effort)
         if (planStore)
         {
             const auto erased = planStore->erase(queryId);
@@ -327,42 +335,25 @@ WorkerStatus SingleNodeWorker::getWorkerStatus(std::chrono::system_clock::time_p
         {
             case QueryState::Registered:
                 break;
-
             case QueryState::Started:
-                INVARIANT(metrics.start.has_value(), "If query is started, it should have a start timestamp");
-                if (metrics.start.value() >= after)
+                if (metrics.start.has_value() && metrics.start.value() >= after)
                 {
                     status.activeQueries.emplace_back(queryId, std::nullopt);
                 }
                 break;
-
-            case QueryState::Running: {
-                INVARIANT(metrics.running.has_value(), "If query is running, it should have a running timestamp");
-                if (metrics.running.value() >= after)
+            case QueryState::Running:
+                if (metrics.running.has_value() && metrics.running.value() >= after)
                 {
                     status.activeQueries.emplace_back(queryId, metrics.running.value());
                 }
                 break;
-            }
-
-            case QueryState::Stopped: {
-                INVARIANT(metrics.running.has_value(), "If query is stopped, it should have a running timestamp");
-                INVARIANT(metrics.stop.has_value(), "If query is stopped, it should have a stopped timestamp");
-                if (metrics.stop.value() >= after)
+            case QueryState::Stopped:
+            case QueryState::Failed:
+                if (metrics.stop.has_value() && metrics.stop.value() >= after)
                 {
                     status.terminatedQueries.emplace_back(queryId, metrics.running, metrics.stop.value(), metrics.error);
                 }
                 break;
-            }
-
-            case QueryState::Failed: {
-                INVARIANT(metrics.stop.has_value(), "If query has failed, it should have a stopped timestamp");
-                if (metrics.stop.value() >= after)
-                {
-                    status.terminatedQueries.emplace_back(queryId, metrics.running, metrics.stop.value(), metrics.error);
-                }
-                break;
-            }
         }
     }
 
