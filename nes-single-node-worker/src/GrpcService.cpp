@@ -1,17 +1,3 @@
-/*
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        https://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-*/
-
 #include <GrpcService.hpp>
 
 #include <chrono>
@@ -90,7 +76,7 @@ grpc::Status GRPCServer::UnregisterQuery(grpc::ServerContext* context, const Unr
     const auto queryId = LocalQueryId(request->queryid());
     CPPTRACE_TRY
     {
-        getValueOrThrow(delegate.unregisterQuery(queryId));
+        getValueOrThrow(delegate->unregisterQuery(queryId));
         return grpc::Status::OK;
     }
     CPPTRACE_CATCH(const Exception& e)
@@ -129,7 +115,7 @@ grpc::Status GRPCServer::StopQuery(grpc::ServerContext* context, const StopQuery
     const auto terminationType = static_cast<QueryTerminationType>(request->terminationtype());
     CPPTRACE_TRY
     {
-        getValueOrThrow(delegate.stopQuery(queryId, terminationType));
+        getValueOrThrow(delegate->stopQuery(queryId, terminationType));
         return grpc::Status::OK;
     }
     CPPTRACE_CATCH(const Exception& e)
@@ -149,7 +135,7 @@ grpc::Status GRPCServer::RequestQueryStatus(grpc::ServerContext* context, const 
     {
         const auto queryId = LocalQueryId{request->queryid()};
         reply->set_queryid(queryId.getRawValue());
-        if (const auto queryStatus = delegate.getQueryStatus(queryId); queryStatus.has_value())
+        if (const auto queryStatus = delegate->getQueryStatus(queryId); queryStatus.has_value())
         {
             const auto& [start, running, stop, error] = queryStatus->metrics;
             reply->set_state(static_cast<::QueryState>(queryStatus->state));
@@ -200,7 +186,7 @@ grpc::Status GRPCServer::RequestQueryLog(grpc::ServerContext* context, const Que
     CPPTRACE_TRY
     {
         auto queryId = LocalQueryId(request->queryid());
-        auto log = delegate.getQueryLog(queryId);
+        auto log = delegate->getQueryLog(queryId);
         if (log.has_value())
         {
             for (const auto& entry : *log)
@@ -241,7 +227,7 @@ grpc::Status GRPCServer::RequestStatus(grpc::ServerContext* context, const Worke
 {
     CPPTRACE_TRY
     {
-        const auto status = delegate.getWorkerStatus(
+        const auto status = delegate->getWorkerStatus(
             std::chrono::system_clock::time_point(std::chrono::milliseconds(request->after_unix_timestamp_in_milli_seconds())));
 
         serializeWorkerStatus(status, response);

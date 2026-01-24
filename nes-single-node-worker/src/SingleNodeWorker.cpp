@@ -1,17 +1,3 @@
-/*
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        https://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-*/
-
 #include <SingleNodeWorker.hpp>
 
 #include <chrono>
@@ -59,8 +45,6 @@ namespace NES
 {
 
 SingleNodeWorker::~SingleNodeWorker() = default;
-SingleNodeWorker::SingleNodeWorker(SingleNodeWorker&& other) noexcept = default;
-SingleNodeWorker& SingleNodeWorker::operator=(SingleNodeWorker&& other) noexcept = default;
 
 SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& config, WorkerId workerId)
     : listener(std::make_shared<CompositeStatisticListener>()), configuration(config)
@@ -77,8 +61,6 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& config, 
     }
 
     nodeEngine = NodeEngineBuilder(configuration.workerConfiguration, copyPtr(listener)).build(workerId);
-
-    // FIX (Point 2): Check that critical components are valid
     if (!nodeEngine) {
         throw std::runtime_error("SingleNodeWorker: Failed to build NodeEngine.");
     }
@@ -87,7 +69,7 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& config, 
     if (!optimizer) {
         throw std::runtime_error("SingleNodeWorker: Failed to initialize QueryOptimizer.");
     }
-
+    
     compiler = std::make_unique<QueryCompilation::QueryCompiler>();
     if (!compiler) {
         throw std::runtime_error("SingleNodeWorker: Failed to initialize QueryCompiler.");
@@ -175,9 +157,6 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& config, 
             configuration.grpcAddressUri.getValue().toString(),
             callback);
 
-        // Note: For local recovery with etcd, we'd need to track distributed query IDs
-        // separately. For now, just start the reconciler.
-
         reconciler->start();
         NES_INFO("SingleNodeWorker: etcd reconciler started");
     }
@@ -189,18 +168,16 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& config, 
     }
 }
 
-// Change this function:
 void SingleNodeWorker::onQueryDiscoveredFromEtcd(const std::string& distributedQueryId, LogicalPlan plan)
 {
     NES_INFO("SingleNodeWorker: processing distributed query '{}' from etcd", distributedQueryId);
 
-    // FIX (Point 1): Validate the plan BEFORE it is moved into registerQuery
     if (plan.getRootOperators().empty()) {
-        NES_ERROR("Deserialized plan for '{}' has no root operators!", distributedQueryId);
+        NES_ERROR("Deserialized plan for distributed query '{}' has no root operators!", distributedQueryId);
         return;
     }
 
-    auto registerResult = registerQuery(std::move(plan)); // Plan is moved here
+    auto registerResult = registerQuery(std::move(plan));
     if (!registerResult)
     {
         NES_ERROR("SingleNodeWorker: failed to register distributed query '{}' from etcd: {}",
@@ -208,7 +185,6 @@ void SingleNodeWorker::onQueryDiscoveredFromEtcd(const std::string& distributedQ
         return;
     }
 
-    // SUCCESS: Now we can start the query using the resulting LocalQueryId
     LocalQueryId localQueryId = *registerResult;
     NES_INFO("SingleNodeWorker: registered distributed query '{}' as local query {}", 
              distributedQueryId, localQueryId);

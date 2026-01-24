@@ -1,5 +1,6 @@
 #include <csignal>
 #include <semaphore>
+#include <memory>
 
 #include <Configurations/Util.hpp>
 #include <Util/Logger/Logger.hpp>
@@ -56,13 +57,11 @@ int main(int argc, const char* argv[])
         const auto workerId =
             NES::WorkerId(configuration->connection.getValue().toString());
 
-        // ... after initializing thread ...
         NES::Thread::initializeThread(workerId, "main");
 
-        // CHANGE: Use make_unique instead of stack allocation
+        // Instantiating on the heap to ensure a stable memory address for background threads
         auto worker = std::make_unique<NES::SingleNodeWorker>(*configuration, workerId);
 
-        // CHANGE: Pass the unique_ptr to the grpcService
         NES::GRPCServer grpcService{std::move(worker)};
 
         grpc::ServerBuilder builder;

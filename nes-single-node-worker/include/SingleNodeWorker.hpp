@@ -40,11 +40,9 @@ public:
     explicit SingleNodeWorker(const SingleNodeWorkerConfiguration&, WorkerId = WorkerId("SingleNodeWorker"));
     ~SingleNodeWorker();
     
-    // Disallow copying (already done)
+    // Disable Copying and Moving to ensure memory stability for background threads
     SingleNodeWorker(const SingleNodeWorker& other) = delete;
     SingleNodeWorker& operator=(const SingleNodeWorker& other) = delete;
-
-    // FIX: Disallow moving to prevent background thread segfaults
     SingleNodeWorker(SingleNodeWorker&& other) noexcept = delete;
     SingleNodeWorker& operator=(SingleNodeWorker&& other) noexcept = delete;
 
