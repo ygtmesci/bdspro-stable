@@ -63,7 +63,7 @@ SingleNodeWorker::SingleNodeWorker(SingleNodeWorker&& other) noexcept = default;
 SingleNodeWorker& SingleNodeWorker::operator=(SingleNodeWorker&& other) noexcept = default;
 
 SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& config, WorkerId workerId)
-    : listener(std::make_shared<CompositeStatisticListener>()), configuration(config)  // renamed parameter
+    : listener(std::make_shared<CompositeStatisticListener>()), configuration(config)
 {
     if (configuration.enableGoogleEventTrace.getValue())
     {
@@ -78,8 +78,9 @@ SingleNodeWorker::SingleNodeWorker(const SingleNodeWorkerConfiguration& config, 
 
     nodeEngine = NodeEngineBuilder(configuration.workerConfiguration, copyPtr(listener)).build(workerId);
 
+    // FIX (Point 2): Check that critical components are valid
     if (!nodeEngine) {
-        throw std::runtime_error("SingleNodeWorker: Failed to build NodeEngine. Check configuration and port availability.");
+        throw std::runtime_error("SingleNodeWorker: Failed to build NodeEngine.");
     }
 
     optimizer = std::make_unique<QueryOptimizer>(this->configuration.workerConfiguration.defaultQueryExecution);
@@ -193,13 +194,13 @@ void SingleNodeWorker::onQueryDiscoveredFromEtcd(const std::string& distributedQ
 {
     NES_INFO("SingleNodeWorker: processing distributed query '{}' from etcd", distributedQueryId);
 
-    // FIX: Check for root operators BEFORE moving the plan
+    // FIX (Point 1): Validate the plan BEFORE it is moved into registerQuery
     if (plan.getRootOperators().empty()) {
         NES_ERROR("Deserialized plan for '{}' has no root operators!", distributedQueryId);
         return;
     }
 
-    auto registerResult = registerQuery(std::move(plan));
+    auto registerResult = registerQuery(std::move(plan)); // Plan is moved here
     if (!registerResult)
     {
         NES_ERROR("SingleNodeWorker: failed to register distributed query '{}' from etcd: {}",
@@ -207,8 +208,7 @@ void SingleNodeWorker::onQueryDiscoveredFromEtcd(const std::string& distributedQ
         return;
     }
 
-    // REMOVED: The check here was causing an early return because 'plan' was empty after std::move
-
+    // SUCCESS: Now we can start the query using the resulting LocalQueryId
     LocalQueryId localQueryId = *registerResult;
     NES_INFO("SingleNodeWorker: registered distributed query '{}' as local query {}", 
              distributedQueryId, localQueryId);

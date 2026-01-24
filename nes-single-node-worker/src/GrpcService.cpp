@@ -70,7 +70,7 @@ grpc::Status GRPCServer::RegisterQuery(grpc::ServerContext* context, const Regis
     auto fullySpecifiedQueryPlan = QueryPlanSerializationUtil::deserializeQueryPlan(request->queryplan());
     CPPTRACE_TRY
     {
-        auto result = delegate.registerQuery(std::move(fullySpecifiedQueryPlan));
+        auto result = delegate->registerQuery(std::move(fullySpecifiedQueryPlan));
         if (result.has_value())
         {
             response->set_queryid(result->getRawValue());
@@ -109,7 +109,7 @@ grpc::Status GRPCServer::StartQuery(grpc::ServerContext* context, const StartQue
     const auto queryId = LocalQueryId(request->queryid());
     CPPTRACE_TRY
     {
-        getValueOrThrow(delegate.startQuery(queryId));
+        getValueOrThrow(delegate->startQuery(queryId));
         return grpc::Status::OK;
     }
     CPPTRACE_CATCH(const Exception& e)

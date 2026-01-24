@@ -40,10 +40,13 @@ public:
     explicit SingleNodeWorker(const SingleNodeWorkerConfiguration&, WorkerId = WorkerId("SingleNodeWorker"));
     ~SingleNodeWorker();
     
+    // Disallow copying (already done)
     SingleNodeWorker(const SingleNodeWorker& other) = delete;
     SingleNodeWorker& operator=(const SingleNodeWorker& other) = delete;
-    SingleNodeWorker(SingleNodeWorker&& other) noexcept;
-    SingleNodeWorker& operator=(SingleNodeWorker&& other) noexcept;
+
+    // FIX: Disallow moving to prevent background thread segfaults
+    SingleNodeWorker(SingleNodeWorker&& other) noexcept = delete;
+    SingleNodeWorker& operator=(SingleNodeWorker&& other) noexcept = delete;
 
     [[nodiscard]] std::expected<LocalQueryId, Exception> registerQuery(LogicalPlan plan) noexcept;
     std::expected<void, Exception> startQuery(LocalQueryId queryId) noexcept;
