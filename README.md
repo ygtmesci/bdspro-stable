@@ -1,156 +1,159 @@
-<div align="center">
-  <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/resources/NebulaBanner.png">
-    <source media="(prefers-color-scheme: dark)" srcset="docs/resources/NebulaBannerDarkMode.png">
-    <img alt="NebulaStream logo" src="docs/resources/NebulaBanner.png" height="100">
-  </picture>
-  <br />
-  <!-- Badges -->
-  <a href="https://github.com/nebulastream/nebulastream-public/actions/workflows/nightly.yml">
-    <img src="https://github.com/nebulastream/nebulastream-public/actions/workflows/nightly.yml/badge.svg"
-         alt="NES Nightly" />
-  </a>
-  <a href="https://bench.nebula.stream/c-benchmarks/">
-    <img src="https://img.shields.io/badge/Benchmark-Conbench-blue?labelColor=3D444C"
-         alt="Conbench" />
-  </a>
-  <a href="https://codecov.io/github/nebulastream/nebulastream" > 
-    <img src="https://codecov.io/github/nebulastream/nebulastream/graph/badge.svg?token=ER83Nm1crF" alt="Codecov"/> 
-  </a>  
-</div>
+# ETCD Extension for Nebulastream – Distributed PoC
 
-----
+This document describes how to build and run the ETCD extension for Nebulastream's distributed proof-of-concept.
 
-NebulaStream is an end-to-end data-management system for cloud-edge-sensor deployments.
-The platform combines ease of use, extensibility, and efficiency to let teams focus on business logic while the engine optimizes the data path.
+---
 
-**Core Pillars**
-- **Ease of Use** - Rich, out-of-the-box functionality for a variety of stream processing queries.
-- **Extensibility** - Uniform plugin registries for custom connectors, formats, operators, and optimizations.
-- **Efficiency** - Hardware-tailored code, adaptive execution, and interleaved I/O to handle large workloads.
+## Requirements
 
-## Vision
+- Docker
+- gcc
+- libstdc++
+- Working directory: `bdspro-stable/`
 
-NebulaStream is a joint research project at BIFOLD with contributors from the DIMA Group at TU Berlin and the DFKI IAM Group.
-It aims to execute thousands of queries over millions of heterogeneous sources in massively distributed environments.
-We advance this vision through five core technologies:
-- **Heterogeneous Hardware Support** - Targets diverse CPU architectures and accelerators such as GPUs and TPUs.
-- **Code Generation** - Compiles every query to efficient native code for low latency and energy usage.
-- **In-Network Processing** - Pushes operators toward data sources to reduce network traffic.
-- **Adaptive Resource Management** - Reacts to topology or workload changes without interrupting queries.
+---
 
-The system architecture spans sensor to cloud:
-1. **Sources & Sinks** - Built-in connectors (e.g., JDBC, MQTT, TCP) and formats (e.g., CSV, JSON) with plugin hooks for custom components; extend them via the plugin framework in the [Extensibility guide](docs/guide/extensibility.md).
-2. **I/O Handling** - Thread-shared source processing and asynchronous callbacks minimize waiting time.
-3. **Query Submission** - SQL-like language with prebuilt operators such as join and aggregation, plus user-defined operator plugins.
-4. **Query Optimization** - Rule-based optimizer generates hardware-aware plans; users can extend the rule engine.
-5. **Adaptive Runtime** - Task-based scheduling keeps execution responsive under dynamic workloads.
+## Build Instructions
 
-## Quick Start
+### 1. Install Docker Environment
 
-### Build & Tooling
-
-#### Use the Nix flake
-Install [Nix with flakes enabled](https://nixos.org/download/) and generate build links:
-
-```shell
-nix run .#clion-setup
-```
-
-Configure, build, and test through the Nix-wrapped helpers:
-
-```shell
-./.nix/nix-cmake.sh \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -G Ninja \
-  -S . -B cmake-build-debug
-
-./.nix/nix-cmake.sh --build cmake-build-debug
-./.nix/ctest --test-dir cmake-build-debug -j
-```
-
-#### Use the development container
-Build or reuse the local development image (installs the current user inside the container to avoid permission issues):
-
-```shell
+```bash
 ./scripts/install-local-docker-environment.sh
 ```
 
-Configure, build, and test by mounting the repository into the container:
+### 2. Configure with CMake
 
-```shell
-docker run \
-  --workdir $(pwd) \
-  -v $(pwd):$(pwd) \
-  nebulastream/nes-development:local \
-  cmake -B cmake-build-debug
-
-docker run \
-  --workdir $(pwd) \
-  -v $(pwd):$(pwd) \
-  nebulastream/nes-development:local \
-  cmake --build cmake-build-debug -j
-
-docker run \
-  --workdir $(pwd) \
-  -v $(pwd):$(pwd) \
-  nebulastream/nes-development:local \
-  ctest --test-dir cmake-build-debug -j
+```bash
+docker run --workdir $(pwd) -v $(pwd):$(pwd) nebulastream/nes-development:local \
+cmake -B cmake-build-debug -S .
 ```
 
-### Execute Queries & Tests
+### 3. Build
 
-#### Run systest for a query
-Build the `systest` executable in your chosen build directory and execute a specific query. The example below targets the first query in the arithmetic function suite and stores artifacts in `cmake-build-debug/systest-run`:
-
-```shell
-cmake --build cmake-build-debug -j --target systest
-cmake-build-debug/systest/systest -t nes-systests/function/arithmetical/FunctionAdd.test:1
+```bash
+docker run --workdir $(pwd) -v $(pwd):$(pwd) nebulastream/nes-development:local \
+cmake --build cmake-build-debug -j
 ```
 
-Append worker configuration overrides after `--` (for example `-- --worker.default_query_execution.execution_mode=INTERPRETER`). See the [systest guide](docs/development/systests.md) for authoring custom `.test` files and the complete CLI reference.
+---
 
-#### Start the client with a worker
-Build the client and worker binaries, start the worker in one terminal, and submit a short-lived query from another terminal using `nes-repl`:
+## Start ETCD and Workers
 
-```shell
-cmake --build cmake-build-debug -j --target nes-single-node-worker nes-repl
-
-# Terminal 1: start the worker (listens on localhost:8080 by default)
-cmake-build-debug/nes-single-node-worker/nes-single-node-worker
-
-# Terminal 2: prepare a tiny CSV and submit a query via nes-repl
-printf '1\n2\n3\n' > demo-input.csv
-
-cat > demo.sql <<'EOF'
-CREATE LOGICAL SOURCE demo(value UINT64);
-CREATE PHYSICAL SOURCE FOR demo TYPE File SET('./demo-input.csv' AS `SOURCE`.FILE_PATH, 'CSV' AS PARSER.`TYPE`, '\n' AS PARSER.TUPLE_DELIMITER, ',' AS PARSER.FIELD_DELIMITER);
-CREATE SINK result(demo.value UINT64) TYPE File SET('./demo-output.csv' AS `SINK`.FILE_PATH, 'CSV' AS `SINK`.INPUT_FORMAT);
-SELECT value FROM demo INTO result;
-EOF
-
-cmake-build-debug/nes-nebuli/apps/nes-repl -s localhost:8080 < demo.sql
+```bash
+docker compose -f etcd-workers.yaml up -d
 ```
 
-The generated CSV appears at `demo-output.csv`. Inspect or retire the query with additional `nes-cli` commands such as `status` or `stop` as needed.
+---
 
-For further information about our frontends, check out the [Frontend Reference](docs/nebuli-frontend-reference.md).
+## Watch ETCD Operations
 
-## Documentation
-- Design proposals and architectural notes: [Design index](docs/design/README.md)
-- Developer workflows and environment setup: [Development environment](docs/development/development.md), [Run workflows locally](docs/running_workflows_locally.md)
-- Technical deep dives: [Dependency architecture](docs/technical/dependency.md), [Query engine task queue](docs/technical/QueryEngine_TaskQueue.md), [Watermarking trigger details](docs/technical/watermarking_progress_window_triggering.md)
-- Organizational guidelines and processes: [Meetings overview](docs/organizational/meetings.md), [Nightly CI process](docs/organizational/processes/nightly_ci.md)
+To monitor all ETCD key changes:
 
-## Contributing & Quality
-- Follow the [development guide](docs/development/development.md) for environment setup and tooling expectations.
-- Code style is enforced with `clang-format`, `clang-tidy`, license checks, and pragma guards; run the `format` target before submitting patches.
-- Review the Git workflow aids in [Useful git commands](docs/git/useful_commands.md), [PR checklist](docs/git/checklist_pr.md), and IDE tips in [CLion tricks](docs/git/clion_tricks.md).
-- External contributors should work from personal forks and open pull requests referencing their forked branches; direct pushes to this repository are reserved for maintainers.
-- Adhere to our [Code of Conduct](CODE_OF_CONDUCT.md).
+```bash
+docker exec -it etcd etcdctl \
+--endpoints=http://127.0.0.1:2379 watch --prefix /
+```
 
-### Build Types
-- Debug - Compiles all logging and keeps asserts enabled; best during active development.
-- RelWithDebInfo - Keeps warning-level logging and asserts for balanced debugging/performance.
-- Release - Optimizes for throughput with error-level logging. Asserts are enabled.
-- Benchmark - Strips logging and assertions for maximum performance; use only with well-tested queries because undefined behavior is not guarded.
+---
+
+## Run Worker
+
+Open a new terminal:
+
+```bash
+docker compose -f etcd-workers.yaml exec nes bash
+cd ./cmake-build-debug/nes-single-node-worker
+
+./nes-single-node-worker \
+  --connection=sink-node:9090 \
+  --grpc=sink-node:9091 \
+  --enableEtcdReconciler=true \
+  --etcdEndpoints=http://etcd:2379
+```
+
+The `--enableEtcdReconciler=true` flag enables:
+
+- Query submission via ETCD
+- Reconciliation after worker crashes
+- Automatic key cleanup after completion
+
+---
+
+## Run NES REPL (Embedded Mode)
+
+Open another terminal:
+
+```bash
+docker compose -f etcd-workers.yaml exec nes bash
+cd ./cmake-build-debug/nes-nebuli/apps
+./nes-repl-embedded -d -f JSON
+```
+
+---
+
+## Submit a Short Query
+
+Inside `nes-repl-embedded`:
+
+```sql
+-- 1. Register worker
+CREATE WORKER "sink-node:9090" AT "sink-node:9091";
+
+-- 2. Create logical source
+CREATE LOGICAL SOURCE endless(ts UINT64);
+
+-- 3. Create physical source
+CREATE PHYSICAL SOURCE FOR endless
+TYPE Generator
+SET(
+    'ALL' as `SOURCE`.STOP_GENERATOR_WHEN_SEQUENCE_FINISHES,
+    'CSV' as PARSER.`TYPE`,
+    'emit_rate 10' AS `SOURCE`.GENERATOR_RATE_CONFIG,
+    10000 AS `SOURCE`.MAX_RUNTIME_MS,
+    "sink-node:9090" AS `SOURCE`.`HOST`,
+    1 AS `SOURCE`.SEED,
+    'SEQUENCE UINT64 0 10000000 1' AS `SOURCE`.GENERATOR_SCHEMA
+);
+
+-- 4. Create sink
+CREATE SINK someSink(ENDLESS.TS UINT64)
+TYPE File
+SET(
+    'out.csv' as `SINK`.FILE_PATH,
+    'CSV' as `SINK`.INPUT_FORMAT,
+    "sink-node:9090" AS `SINK`.`HOST`
+);
+
+-- 5. Deploy query
+SELECT TS FROM ENDLESS INTO SOMESINK;
+```
+
+---
+
+## Expected Behaviour
+
+1. Query is written to ETCD (PUT event).
+2. Worker detects the new key.
+3. Worker executes the query.
+4. After completion, the worker deletes the key (DELETE event).
+5. If the worker crashes during execution, it reconciles the query from ETCD upon restart.
+
+---
+
+## Screenshots
+
+### Worker Processing
+
+![Worker Output](worker.jpg)
+
+### ETCD PUT Event
+
+![ETCD PUT](put-etcd.jpg)
+
+### ETCD DELETE Event
+
+![ETCD DELETE](delete-etcd.jpg)
+
+### NES REPL
+
+![NES REPL](nes-repl.jpg)
