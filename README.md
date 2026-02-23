@@ -1,6 +1,6 @@
-# ETCD Extension for Nebulastream – Distributed PoC
+# ETCD Extension for Nebulastream – Distributed-poc
 
-This document describes how to build and run the ETCD extension for Nebulastream's distributed proof-of-concept.
+This guide describes how to build and run the ETCD extension for Nebulastream's distributed-poc branch.
 
 ---
 
