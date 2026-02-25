@@ -91,28 +91,32 @@ df = df.head(N)
 
 x = range(len(df))
 
-a = df["boot_to_reconciler_ms"]
-b = df["reconciler_to_processing_ms"]
-c = df["processing_to_pipeline_ms"]
-d = df["pipeline_to_registered_ms"]
-e = df["registered_to_started_ms"]
+# Pasar de ms a segundos (coherente con la tabla)
+a = df["boot_to_reconciler_ms"] / 1000.0
+b = df["reconciler_to_processing_ms"] / 1000.0
+c = df["processing_to_pipeline_ms"] / 1000.0
+d = df["pipeline_to_registered_ms"] / 1000.0
+e = df["registered_to_started_ms"] / 1000.0
 # f es opcional (a veces no aparece)
-f = df["started_to_filesink_ms"].fillna(0)
+f = df["started_to_filesink_ms"].fillna(0) / 1000.0
 
-plt.figure()
+plt.figure(figsize=(12, 4))
 plt.bar(x, a, label="Boot → Reconciler")
 plt.bar(x, b, bottom=a, label="Reconciler → Discovery")
-plt.bar(x, c, bottom=a+b, label="Discovery → Pipeline")
-plt.bar(x, d, bottom=a+b+c, label="Pipeline → Registered")
-plt.bar(x, e, bottom=a+b+c+d, label="Registered → Started")
-plt.bar(x, f, bottom=a+b+c+d+e, label="Started → FileSink")
+plt.bar(x, c, bottom=a + b, label="Discovery → Pipeline")
+plt.bar(x, d, bottom=a + b + c, label="Pipeline → Registered")
+plt.bar(x, e, bottom=a + b + c + d, label="Registered → Started")
+plt.bar(x, f, bottom=a + b + c + d + e, label="Started → FileSink")
 
-# Etiquetas más cortas
-labels = [f"iter{i+1}" for i in range(len(df))]
+# Etiquetas del eje X: 1..20
+labels = list(range(1, len(df) + 1))
 plt.xticks(list(x), labels, rotation=0)
 
-plt.ylabel("Time (ms)")
-plt.title("Worker internal recovery breakdown (more phases)")
-plt.legend()
+plt.ylabel("Time (s)")
+plt.title("Worker-internal recovery breakdown across 20 runs")
+
+# Leyenda fuera para no tapar barras
+plt.legend(loc="upper center", bbox_to_anchor=(0.5, -0.25), ncol=3)
+
 plt.tight_layout()
 plt.show()
